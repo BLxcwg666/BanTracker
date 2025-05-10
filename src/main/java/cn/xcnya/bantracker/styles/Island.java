@@ -18,6 +18,7 @@ public class Island implements TrackerStyle {
         if (wdDiff <= 0 && stDiff <= 0) return;
         if (!openAPI.getGameStateManager().isHypixel()) return;
         // 妊娠公鸡你为什么害我翻了2小时的原始码
+        // 呵呵有bug，别问我
 
         if (wdDiff > 0) {
             String msg = String.format("§eWatchdog§r banned %d Player(s).", wdDiff);
