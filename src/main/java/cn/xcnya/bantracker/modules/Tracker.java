@@ -13,6 +13,9 @@ import today.opai.api.interfaces.modules.values.ModeValue;
 import cn.xcnya.bantracker.styles.*;
 
 import java.util.*;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 import static cn.xcnya.bantracker.BanTracker.openAPI;
 import static cn.xcnya.bantracker.BanTracker.versionID;
@@ -20,7 +23,7 @@ import static cn.xcnya.bantracker.BanTracker.versionID;
 public class Tracker extends ExtensionModule implements EventHandler {
     public static final Gson gson = new Gson();
     public static Tracker INSTANCE;
-    private Timer timer;
+    private ScheduledExecutorService scheduler;
 
     private int lastWatchdog = -1;
     private int lastStaff = -1;
@@ -57,14 +60,14 @@ public class Tracker extends ExtensionModule implements EventHandler {
         INSTANCE = this;
     }
 
-    private PunishmentData trackerPunishment(){
+    private PunishmentData trackerPunishment() {
         try {
             Request request = new Request.Builder()
                     .url(remoteApis.get(apis.getValue()))
                     .header("User-Agent", String.format("Mozilla/9.0 (Opai Client v%s)", openAPI.getClientVersion()))
                     .build();
 
-            try(Response response = client.newCall(request).execute()){
+            try(Response response = client.newCall(request).execute()) {
                 if (response.code() != 200) return null;
                 return gson.fromJson(response.body().string(), PunishmentData.class);
             }
@@ -84,8 +87,8 @@ public class Tracker extends ExtensionModule implements EventHandler {
         try {
             PunishmentData punishmentData = trackerPunishment();
             if (punishmentData == null) {
-                Queue<String> availableApis = requestAvailableApis();
-                while (!availableApis.isEmpty()){
+                ArrayDeque<String> availableApis = requestAvailableApis();
+                while (!availableApis.isEmpty()) {
                     apis.setValue(availableApis.poll());
                     punishmentData = trackerPunishment();
                     if (punishmentData != null) break;
@@ -122,8 +125,8 @@ public class Tracker extends ExtensionModule implements EventHandler {
         }
     }
 
-    private Queue<String> requestAvailableApis(){
-        Queue<String> tryingApis = new LinkedList<>();
+    private ArrayDeque<String> requestAvailableApis() {
+        ArrayDeque<String> tryingApis = new ArrayDeque<>();
         for (String mode : apis.getAllModes()) {
             if (mode.equals(apis.getValue())) continue;
             tryingApis.offer(mode);
@@ -133,12 +136,13 @@ public class Tracker extends ExtensionModule implements EventHandler {
 
     @Override
     public void onEnabled() {
+        scheduler = Executors.newScheduledThreadPool(1);
         new Thread(() -> {
             boolean initSuccess = false;
-            Queue<String> tryingApis = requestAvailableApis();
+            ArrayDeque<String> tryingApis = requestAvailableApis();
 
-            if (trackerPunishment() == null){
-                while (!tryingApis.isEmpty()){
+            if (trackerPunishment() == null) {
+                while (!tryingApis.isEmpty()) {
                     apis.setValue(tryingApis.poll());
                     if (trackerPunishment() != null) {
                         initSuccess = true;
@@ -154,32 +158,22 @@ public class Tracker extends ExtensionModule implements EventHandler {
                 return;
             }
 
-            timer = new Timer();
-            timer.scheduleAtFixedRate(new TimerTask() {
-                @Override
-                public void run() {
-                    trackBans();
-                }
-            }, 0, 5000);
+            scheduler.scheduleAtFixedRate(this::trackBans, 0, 5, TimeUnit.SECONDS);
         }, "BanTracker-Init").start();
     }
 
-    private void disableModule(){
+    private void disableModule() {
         openAPI.printMessage("§e[Ban Tracker] API 不可用，模块已关闭。");
         setEnabled(false);
     }
 
-    public void disableTimer(){
-        if (timer != null) {
-            timer.cancel();
-            timer.purge();
-            timer = null;
-        }
+    public void closeScheduler() {
+        scheduler.shutdown();
     }
 
     @Override
     public void onDisabled() {
         setSuffix(versionID);
-        disableTimer();
+        closeScheduler();
     }
 }

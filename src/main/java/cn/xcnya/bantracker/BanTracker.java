@@ -21,6 +21,6 @@ public class BanTracker extends Extension { //多人运动插件↑
 
     @Override
     public void onUnload() {
-        Tracker.INSTANCE.disableTimer();
+        Tracker.INSTANCE.closeScheduler();
     }
 }
